@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.HelpOutline
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.OpenInBrowser
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Router
@@ -109,6 +110,8 @@ fun HomeScreen(
     val privateKey by viewModel.privateKey.collectAsState()
     val password by viewModel.password.collectAsState()
     val autoOpenBrowser by viewModel.autoOpenBrowser.collectAsState()
+    val postConnectCommand by viewModel.postConnectCommand.collectAsState()
+    val autoExecuteCommands by viewModel.autoExecuteCommands.collectAsState()
     val tunnelState by viewModel.tunnelState.collectAsState()
     val logs by viewModel.logs.collectAsState()
     val savedKeys by viewModel.savedKeyPairs.collectAsState()
@@ -736,7 +739,126 @@ fun HomeScreen(
         }
 
         // -------------------------------------------------------------
-        // STEP 3: SSH AUTHENTICATION / KEY SELECTION
+        // 3. AUTO-EXECUTE INSTRUCTIONS (POST-CONNECT)
+        // -------------------------------------------------------------
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.25f), RoundedCornerShape(16.dp))
+                .testTag("auto_execute_card"),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surface
+            ),
+            shape = RoundedCornerShape(16.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.PlayArrow,
+                        contentDescription = null,
+                        tint = CyberCyan,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "3. Post-Connect Instructions",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                    Spacer(modifier = Modifier.weight(1f))
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = if (autoExecuteCommands) "Auto-Run ON" else "OFF",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (autoExecuteCommands) CyberCyan else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Switch(
+                            checked = autoExecuteCommands,
+                            onCheckedChange = { viewModel.autoExecuteCommands.value = it },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = CyberCyan,
+                                checkedTrackColor = CyberCyan.copy(alpha = 0.35f)
+                            ),
+                            modifier = Modifier.testTag("auto_execute_switch")
+                        )
+                    }
+                }
+
+                Text(
+                    text = "Instructions executed automatically once the remote prompt is reached after connecting:",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                OutlinedTextField(
+                    value = postConnectCommand,
+                    onValueChange = {
+                        viewModel.postConnectCommand.value = it
+                        if (it.isNotBlank()) {
+                            viewModel.autoExecuteCommands.value = true
+                        }
+                    },
+                    placeholder = {
+                        Text(
+                            "# Commands run automatically at prompt, e.g.:\ncd /workspace\npython launch.py --port 7860",
+                            fontSize = 12.sp,
+                            fontFamily = FontFamily.Monospace,
+                            color = Color(0xFF64748B)
+                        )
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("post_connect_instructions_input"),
+                    textStyle = MaterialTheme.typography.bodySmall.copy(
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 12.sp,
+                        color = EmeraldConnected
+                    ),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = CyberCyan,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
+                        focusedContainerColor = Color(0xFF090F21),
+                        unfocusedContainerColor = Color(0xFF090F21)
+                    ),
+                    minLines = 3,
+                    maxLines = 8
+                )
+
+                // Quick preset instruction chips
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    val presets = listOf(
+                        "GPU Info" to "nvidia-smi",
+                        "Workspace" to "cd /workspace && ls -la",
+                        "WebUI" to "python launch.py --port 7860"
+                    )
+                    presets.forEach { (label, cmd) ->
+                        OutlinedButton(
+                            onClick = { viewModel.appendPostConnectCommand(cmd) },
+                            modifier = Modifier.height(30.dp),
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                        ) {
+                            Text("+ $label", fontSize = 10.sp, color = CyberCyan)
+                        }
+                    }
+                }
+            }
+        }
+
+        // -------------------------------------------------------------
+        // STEP 4: SSH AUTHENTICATION / KEY SELECTION
         // -------------------------------------------------------------
         Card(
             modifier = Modifier
@@ -764,7 +886,7 @@ fun HomeScreen(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "3. SSH Key / Credentials",
+                        text = "4. SSH Key / Credentials",
                         fontSize = 15.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.White

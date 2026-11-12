@@ -29,12 +29,18 @@ interface ConnectionDao {
     @Delete
     suspend fun deleteProfile(profile: ConnectionProfile)
 
+    @Query("SELECT * FROM connection_profiles")
+    suspend fun getAllProfilesSync(): List<ConnectionProfile>
+
     @Query("UPDATE connection_profiles SET lastConnectedAt = :timestamp WHERE id = :id")
     suspend fun updateLastConnected(id: Long, timestamp: Long)
 
     // Key Pairs
     @Query("SELECT * FROM ssh_key_pairs ORDER BY createdAt DESC")
     fun getAllKeyPairs(): Flow<List<SshKeyPair>>
+
+    @Query("SELECT * FROM ssh_key_pairs")
+    suspend fun getAllKeyPairsSync(): List<SshKeyPair>
 
     @Query("SELECT * FROM ssh_key_pairs WHERE id = :id LIMIT 1")
     suspend fun getKeyPairById(id: Long): SshKeyPair?

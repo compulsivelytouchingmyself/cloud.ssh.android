@@ -45,7 +45,10 @@ data class PortPreset(
 
 class SshViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val repository = SshRepository(AppDatabase.getInstance(application).connectionDao())
+    private val repository = SshRepository(
+        AppDatabase.getInstance(application).connectionDao(),
+        application.applicationContext
+    )
 
     val savedProfiles: StateFlow<List<ConnectionProfile>> = repository.allProfiles.stateIn(
         viewModelScope,
@@ -85,6 +88,10 @@ class SshViewModel(application: Application) : AndroidViewModel(application) {
     val commandAugmentation = MutableStateFlow(
         com.example.ssh.SshCommandParser.augmentCommandWithProxyPort("", 7860)
     )
+
+    // Post-Connect Auto-Execute Instructions
+    val postConnectCommand = MutableStateFlow("")
+    val autoExecuteCommands = MutableStateFlow(true)
 
     val isDynamicSshPort = MutableStateFlow(false)
     val hasPortPlaceholder = MutableStateFlow(false)
@@ -264,6 +271,8 @@ class SshViewModel(application: Application) : AndroidViewModel(application) {
         val effectiveCmd = if (augmentation.effectiveCommand.isNotBlank()) augmentation.effectiveCommand else rawCommand.value
         val currentProxyPort = proxyPort.value.toIntOrNull() ?: 7860
 
+        val effectivePostConnect = if (autoExecuteCommands.value) postConnectCommand.value.trim() else ""
+
         val profile = ConnectionProfile(
             name = profileName.value.ifBlank { "Cloud-$currentHost" },
             rawCommand = effectiveCmd,
@@ -276,7 +285,8 @@ class SshViewModel(application: Application) : AndroidViewModel(application) {
             password = password.value,
             remotePort = currentProxyPort,
             localPort = currentProxyPort,
-            autoOpenBrowser = autoOpenBrowser.value
+            autoOpenBrowser = autoOpenBrowser.value,
+            postConnectCommand = effectivePostConnect
         )
 
         val app = getApplication<Application>()
@@ -286,12 +296,23 @@ class SshViewModel(application: Application) : AndroidViewModel(application) {
         tunnelService?.connectTunnel(profile) { result ->
             viewModelScope.launch {
                 if (result.isSuccess) {
-                    _snackBarEvent.emit("Connected! Proxy active on port ${result.getOrNull()}")
+                    val execMsg = if (effectivePostConnect.isNotBlank()) " & executing instructions" else ""
+                    _snackBarEvent.emit("Connected! Proxy on :${result.getOrNull()}$execMsg")
                 } else {
                     _snackBarEvent.emit("Connection failed: ${result.exceptionOrNull()?.message}")
                 }
             }
         }
+    }
+
+    fun appendPostConnectCommand(cmd: String) {
+        val current = postConnectCommand.value.trim()
+        postConnectCommand.value = if (current.isBlank()) {
+            cmd
+        } else {
+            "$current\n$cmd"
+        }
+        autoExecuteCommands.value = true
     }
 
     fun disconnect() {
@@ -320,7 +341,8 @@ class SshViewModel(application: Application) : AndroidViewModel(application) {
                 password = password.value,
                 remotePort = remotePort.value.toIntOrNull() ?: 7860,
                 localPort = localPort.value.toIntOrNull() ?: 7860,
-                autoOpenBrowser = autoOpenBrowser.value
+                autoOpenBrowser = autoOpenBrowser.value,
+                postConnectCommand = postConnectCommand.value
             )
             repository.saveProfile(profile)
             _snackBarEvent.emit("Profile '$pName' saved!")
@@ -343,7 +365,11 @@ class SshViewModel(application: Application) : AndroidViewModel(application) {
         password.value = profile.password
         remotePort.value = profile.remotePort.toString()
         localPort.value = profile.localPort.toString()
+        proxyPort.value = profile.remotePort.toString()
         autoOpenBrowser.value = profile.autoOpenBrowser
+        postConnectCommand.value = profile.postConnectCommand
+        autoExecuteCommands.value = profile.postConnectCommand.isNotBlank()
+        updateAugmentation()
         _activeTab.value = AppTab.TUNNEL
 
         viewModelScope.launch {
@@ -362,6 +388,13 @@ class SshViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             repository.deleteKeyPair(keyPair)
             _snackBarEvent.emit("Deleted key: ${keyPair.title}")
+        }
+    }
+
+    fun backupAllKeysNow() {
+        viewModelScope.launch {
+            repository.reconcileBackups()
+            _snackBarEvent.emit("Keys & Profiles synchronized with persistent vault!")
         }
     }
 

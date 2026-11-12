@@ -29,6 +29,8 @@ class SshTunnelManager(
 
     private var activeSession: Session? = null
     private var pingJob: Job? = null
+    private var remoteCommandJob: Job? = null
+    private var activeChannel: com.jcraft.jsch.Channel? = null
     private var activeProfile: ConnectionProfile? = null
 
     init {
@@ -173,6 +175,10 @@ class SshTunnelManager(
 
             startKeepalivePing(session)
 
+            if (profile.postConnectCommand.isNotBlank()) {
+                launchPostConnectInstructions(session, profile.postConnectCommand)
+            }
+
             Result.success(primaryBoundLocalPort)
         } catch (e: Exception) {
             val errorMsg = e.localizedMessage ?: e.message ?: "Unknown SSH connection error"
@@ -190,6 +196,45 @@ class SshTunnelManager(
             _tunnelState.value = TunnelState.Error(errorMsg)
             cleanup()
             Result.failure(e)
+        }
+    }
+
+    private fun launchPostConnectInstructions(session: Session, commands: String) {
+        remoteCommandJob?.cancel()
+        remoteCommandJob = scope.launch(Dispatchers.IO) {
+            delay(500)
+            appendLog(LogLevel.INFO, "[Auto-Exec] Prompt reached. Executing startup instructions...")
+            try {
+                val channel = session.openChannel("exec") as com.jcraft.jsch.ChannelExec
+                activeChannel = channel
+
+                val escapedCommands = commands.replace("'", "'\\''")
+                channel.setCommand("bash -l -c '$escapedCommands'")
+                channel.setPty(true)
+
+                val stream = channel.inputStream
+                channel.connect(10000)
+
+                val reader = java.io.BufferedReader(java.io.InputStreamReader(stream, Charsets.UTF_8))
+                var line = reader.readLine()
+                while (isActive && line != null) {
+                    val l = line
+                    if (l.isNotBlank()) {
+                        val clean = l.replace(Regex("\u001B\\[[;\\d]*m"), "").trimEnd()
+                        appendLog(LogLevel.INFO, "[Remote] $clean")
+                    }
+                    line = reader.readLine()
+                }
+
+                if (!channel.isClosed) {
+                    channel.disconnect()
+                }
+                appendLog(LogLevel.SUCCESS, "[Auto-Exec] Startup instructions finished.")
+            } catch (e: Exception) {
+                if (isActive && session.isConnected) {
+                    appendLog(LogLevel.ERROR, "[Auto-Exec Error] ${e.message}")
+                }
+            }
         }
     }
 
@@ -240,6 +285,19 @@ class SshTunnelManager(
     private fun cleanup() {
         pingJob?.cancel()
         pingJob = null
+        remoteCommandJob?.cancel()
+        remoteCommandJob = null
+        try {
+            activeChannel?.let { ch ->
+                if (ch.isConnected) {
+                    ch.disconnect()
+                }
+            }
+        } catch (e: Exception) {
+            // ignore
+        } finally {
+            activeChannel = null
+        }
         try {
             activeSession?.let { session ->
                 if (session.isConnected) {

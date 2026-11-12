@@ -250,6 +250,31 @@ fun ProfileCard(
                 )
             }
 
+            if (profile.postConnectCommand.isNotBlank()) {
+                val firstLine = profile.postConnectCommand.lineSequence().firstOrNull()?.take(40) ?: ""
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(CyberCyan.copy(alpha = 0.08f), RoundedCornerShape(6.dp))
+                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.PlayArrow,
+                        contentDescription = null,
+                        tint = CyberCyan,
+                        modifier = Modifier.size(12.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Auto-Exec: $firstLine",
+                        fontSize = 10.sp,
+                        fontFamily = FontFamily.Monospace,
+                        color = CyberCyan
+                    )
+                }
+            }
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)

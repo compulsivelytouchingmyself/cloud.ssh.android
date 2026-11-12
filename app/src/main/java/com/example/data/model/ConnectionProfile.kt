@@ -19,6 +19,7 @@ data class ConnectionProfile(
     val remotePort: Int = 7860,
     val localPort: Int = 7860,
     val autoOpenBrowser: Boolean = true,
+    val postConnectCommand: String = "",
     val lastConnectedAt: Long = 0L,
     val isFavorite: Boolean = false
 )
