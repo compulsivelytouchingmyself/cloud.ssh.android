@@ -5,6 +5,7 @@ import com.example.data.db.ConnectionDao
 import com.example.data.model.ConnectionProfile
 import com.example.data.model.SshKeyPair
 import com.example.data.storage.DiskBackupManager
+import com.example.data.storage.VaultImportResult
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -29,6 +30,11 @@ class SshRepository(
     suspend fun reconcileBackups() {
         diskBackupManager.syncWithDatabase(dao)
     }
+
+    suspend fun exportVaultJson(): String = diskBackupManager.exportVaultToJson(dao)
+
+    suspend fun importVaultJson(jsonContent: String): VaultImportResult =
+        diskBackupManager.importVaultFromJson(jsonContent, dao)
 
     suspend fun getProfile(id: Long): ConnectionProfile? = dao.getProfileById(id)
 

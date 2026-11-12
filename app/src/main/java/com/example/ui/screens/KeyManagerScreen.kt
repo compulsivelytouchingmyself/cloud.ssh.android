@@ -1,6 +1,8 @@
 package com.example.ui.screens
 
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -22,7 +24,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -54,6 +59,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.SshKeyPair
 import com.example.ui.theme.CyberCyan
+import com.example.ui.theme.EmeraldConnected
 import com.example.ui.viewmodel.SshViewModel
 
 @Composable
@@ -65,20 +71,34 @@ fun KeyManagerScreen(
     val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
 
-    var showGenerateDialog by remember { mutableStateOf(false) }
+    val exportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        if (uri != null) {
+            viewModel.exportVaultToUri(context, uri)
+        }
+    }
+
+    val importLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            viewModel.importVaultFromUri(context, uri)
+        }
+    }
 
     Column(
         modifier = modifier
             .fillMaxSize()
             .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Column {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = "SSH Keys",
                     fontSize = 20.sp,
@@ -98,11 +118,80 @@ fun KeyManagerScreen(
                     containerColor = CyberCyan,
                     contentColor = Color(0xFF002026)
                 ),
-                modifier = Modifier.testTag("generate_new_key_top_button")
+                modifier = Modifier
+                    .height(48.dp)
+                    .testTag("generate_new_key_top_button")
             ) {
                 Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                 Spacer(modifier = Modifier.width(4.dp))
-                Text("New Key", fontSize = 12.sp)
+                Text("New Key", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+
+        // Local Persistence & Portable File Backup Card (Zero-Permission SAF)
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, EmeraldConnected.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+                .testTag("local_vault_backup_card"),
+            colors = CardDefaults.cardColors(
+                containerColor = Color(0xFF081826)
+            ),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Shield,
+                        contentDescription = null,
+                        tint = EmeraldConnected,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Update-Safe Local Vault",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = EmeraldConnected
+                    )
+                }
+                Text(
+                    text = "Keys & profiles persist automatically across app updates. You can also export or restore a portable local backup file anytime.",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    lineHeight = 15.sp
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = { exportLauncher.launch("cloudssh_backup.json") },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp)
+                            .testTag("export_vault_button")
+                    ) {
+                        Icon(Icons.Default.Download, contentDescription = null, tint = CyberCyan, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Export Backup", fontSize = 12.sp, color = CyberCyan)
+                    }
+
+                    OutlinedButton(
+                        onClick = { importLauncher.launch(arrayOf("application/json", "text/plain", "*/*")) },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp)
+                            .testTag("import_vault_button")
+                    ) {
+                        Icon(Icons.Default.UploadFile, contentDescription = null, tint = EmeraldConnected, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Import / Restore", fontSize = 12.sp, color = EmeraldConnected)
+                    }
+                }
             }
         }
 

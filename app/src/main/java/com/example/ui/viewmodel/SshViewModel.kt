@@ -5,6 +5,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
+import android.net.Uri
 import android.os.IBinder
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -19,6 +20,7 @@ import com.example.ssh.SshKeyHelper
 import com.example.ssh.SshTunnelService
 import com.example.ssh.TunnelLog
 import com.example.ssh.TunnelState
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -28,6 +30,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 enum class AppTab {
     TUNNEL,
@@ -394,7 +397,57 @@ class SshViewModel(application: Application) : AndroidViewModel(application) {
     fun backupAllKeysNow() {
         viewModelScope.launch {
             repository.reconcileBackups()
-            _snackBarEvent.emit("Keys & Profiles synchronized with persistent vault!")
+            _snackBarEvent.emit("Keys & Profiles synchronized with local vault!")
+        }
+    }
+
+    fun exportVaultToUri(context: Context, uri: Uri) {
+        viewModelScope.launch {
+            try {
+                val json = repository.exportVaultJson()
+                withContext(Dispatchers.IO) {
+                    context.contentResolver.openOutputStream(uri)?.use { out ->
+                        out.write(json.toByteArray(Charsets.UTF_8))
+                    } ?: throw IllegalStateException("Could not open file for writing")
+                }
+                _snackBarEvent.emit("Backup exported (${savedKeyPairs.value.size} keys, ${savedProfiles.value.size} profiles)")
+            } catch (e: Exception) {
+                _snackBarEvent.emit("Export failed: ${e.message}")
+            }
+        }
+    }
+
+    fun importVaultFromUri(context: Context, uri: Uri) {
+        viewModelScope.launch {
+            try {
+                val content = withContext(Dispatchers.IO) {
+                    context.contentResolver.openInputStream(uri)?.use { input ->
+                        input.bufferedReader(Charsets.UTF_8).readText()
+                    } ?: throw IllegalStateException("Could not read selected file")
+                }.trim()
+
+                if (content.startsWith("{")) {
+                    val result = repository.importVaultJson(content)
+                    _snackBarEvent.emit(
+                        "Restored ${result.restoredKeys} key(s) & ${result.restoredProfiles} profile(s)"
+                    )
+                } else if (SshKeyHelper.isValidPrivateKey(content)) {
+                    val keyPair = SshKeyPair(
+                        title = "Imported Key",
+                        publicKey = "",
+                        privateKey = SshKeyHelper.sanitizePrivateKey(content),
+                        keyType = if (content.contains("ED25519", ignoreCase = true)) "ED25519" else "RSA",
+                        fingerprint = ""
+                    )
+                    repository.saveKeyPair(keyPair)
+                    applyKeyPair(keyPair)
+                    _snackBarEvent.emit("Imported private key to local vault!")
+                } else {
+                    _snackBarEvent.emit("Unrecognized backup or key file format")
+                }
+            } catch (e: Exception) {
+                _snackBarEvent.emit("Import failed: ${e.message}")
+            }
         }
     }
 
